@@ -481,6 +481,18 @@ html[data-tema="dark"] { --bg:#140A12;--white:#20111D;--surface:#2A1726;--border
 #nuit-aviso .dl-row { margin-top: 8px; }
 #modelo-escolha { margin-top: 8px; font-size: 12.5px; }
 #modelo-escolha select { margin-top: 6px; }
+/* Resolvido automaticamente (2026-11-18) */
+.auto-card { margin-bottom: 14px; border-left: 4px solid var(--ok, #0f7a4b); }
+.auto-item { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--border); }
+.auto-item:first-child { border-top: 0; }
+.auto-item .auto-ic { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--ok-cl, rgba(15,122,75,.12)); color: var(--ok, #0f7a4b); font-weight: 700; }
+.auto-item .auto-body { flex: 1; min-width: 0; }
+.auto-item .auto-tit { font-weight: 600; color: var(--text); }
+.auto-item .auto-meta { font-size: 12.5px; color: var(--text2); margin-top: 2px; }
+.auto-item .auto-txt { font-size: 13.5px; color: var(--text2); margin-top: 4px; line-height: 1.45; }
+.auto-item .auto-orig { font-size: 12px; color: var(--text3); margin-top: 4px; font-family: var(--mono); word-break: break-word; }
+.auto-item.desfeito { opacity: .55; }
+.auto-item .auto-v { font-family: var(--mono); white-space: nowrap; }
 
 /* ===================== Relatórios PRO · marginal de Maputo ===================== */
 :root{--sans:'Outfit',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
@@ -1065,6 +1077,12 @@ html[data-pele="pro"] .toolbar select, html[data-pele="pro"] .cc-item input { ba
             <div class="rcard er"><div class="rlbl">Por explicar</div><div class="rval" id="k-porexp">0</div><div class="rsub">sem causa encontrada</div></div>
           </div>
 
+          <div class="card auto-card" id="auto-wrap" style="display:none">
+            <div class="card-head"><h2 id="auto-titulo">Resolvido automaticamente</h2><button class="btn btn-p btn-mini" id="btn-auto-ok" onclick="confirmarAuto()">Confirmar tudo</button></div>
+            <p class="sub" id="auto-sub">Correcções com prova nos ficheiros (célula do relatório antigo, conta do balancete ou regra da empresa), já aplicadas e explicadas. Pode desfazer cada uma; só passam a regra da empresa para os meses seguintes quando confirmar.</p>
+            <div id="auto-lista"></div>
+          </div>
+
           <div class="card">
             <h2>Resultado por mês</h2>
             <p class="sub">Calculado a partir dos balancetes, comparado com o relatório antigo.</p>
@@ -1073,7 +1091,7 @@ html[data-pele="pro"] .toolbar select, html[data-pele="pro"] .cc-item input { ba
 
           <div class="card" id="dif-wrap" style="margin-top:14px">
             <div class="card-head"><h2>Diferenças face ao relatório antigo</h2></div>
-            <p class="sub">Agrupadas por causa, com a correcção proposta. Por omissão o número segue os livros; escolha o que deve mudar.</p>
+            <p class="sub">O que tinha prova já foi resolvido em cima. Aqui fica o que falta: diferenças sem causa encontrada (o sistema não inventa) e trocas entre linhas. Escolha o que deve mudar.</p>
             <div class="dl-row" style="margin:6px 0 10px">
               <button class="btn btn-s btn-mini" onclick="escolherTudo('livros')">Seguir os livros em tudo</button>
               <button class="btn btn-s btn-mini" onclick="escolherTudo('antigo')">Reproduzir o relatório antigo</button>
@@ -2399,7 +2417,7 @@ function relAplicarFicha_(ficha, periodos, opcoes) {
     if (!lista.some(function (p) { return p.id === a.periodo; })) { r.avisos.push('Ajuste ignorado: o periodo "' + a.periodo + '" nao existe.'); return; }
     var c = Math.round((a.valor || 0) * 100); if (!c) return;
     var k = (ajPor[a.periodo] = ajPor[a.periodo] || {}); k[a.linha] = (k[a.linha] || 0) + c;
-    r.ajustes.push({ linha: a.linha, rotulo: l.rotulo || l.id, periodo: a.periodo, valor: relMoeda_(c), motivo: a.motivo || '' });
+    r.ajustes.push({ linha: a.linha, rotulo: l.rotulo || l.id, periodo: a.periodo, valor: relMoeda_(c), motivo: a.motivo || '', auto: !!a.auto });
   });
 
   var modoSaldos = ficha.modo === 'saldos';
@@ -3134,7 +3152,8 @@ function relAprenderEProvar_(livro, opcoes) {
 // Quem escreve o ficheiro e um adaptador: Python (local) ou o adaptador do Apps Script (R5).
 // ================================================================
 
-var REL_ESTADO_TEXTO_ = { validado: 'VALIDADO', com_alertas: 'VALIDADO COM ALERTAS', nao_validado: 'NAO VALIDADO' };
+var REL_ESTADO_TEXTO_ = { validado: 'VALIDADO', validado_com_ajustes: 'VALIDADO COM AJUSTES', com_alertas: 'VALIDADO COM ALERTAS', nao_validado: 'NAO VALIDADO' };
+function relEstadoTexto_(res, pid) { var e = typeof relEstadoApresentado_ === 'function' ? relEstadoApresentado_(res, pid) : (pid ? '' : res.estado); return REL_ESTADO_TEXTO_[e] || e; }
 
 // aprendido: resultado de relAprenderFicha_; res: relAplicarFicha_; comp: relCompararModelo_.
 // opcoes: { titulo, data, prefixo: 'Fixer_' }
@@ -3161,11 +3180,11 @@ function relPlanoExcel_(aprendido, res, comp, opcoes) {
   });
 
   // 2. Folhas novas.
-  var est = [[opcoes.titulo || ('Relatorio ' + (aprendido.ficha.nome || aprendido.ficha.id))], ['Estado', REL_ESTADO_TEXTO_[res.estado] || res.estado], ['Modelo', aprendido.ficha.id], ['Gerado em', opcoes.data || ''],
+  var est = [[opcoes.titulo || ('Relatorio ' + (aprendido.ficha.nome || aprendido.ficha.id))], ['Estado', relEstadoTexto_(res)], ['Modelo', aprendido.ficha.id], ['Gerado em', opcoes.data || ''],
     ['Regra', 'Os numeros seguem os balancetes. O que o relatorio antigo tinha de diferente esta em ' + pre + 'Diferencas; valores fora dos livros so entram por ' + pre + 'Ajustes.'], [], ['Periodo', 'Estado', 'Resultado do periodo (livros)', 'Provas com falha', 'Provas com alerta']];
   res.periodos.forEach(function (p) {
     var pr = res.provas[p.id] || [];
-    est.push([rot[p.id], REL_ESTADO_TEXTO_[p.estado] || p.estado, p.resultado, pr.filter(function (x) { return x.estado === 'falha'; }).map(function (x) { return x.nome; }).join('; '), pr.filter(function (x) { return x.estado === 'alerta'; }).map(function (x) { return x.nome; }).join('; ')]);
+    est.push([rot[p.id], relEstadoTexto_(res, p.id) || p.estado, p.resultado, pr.filter(function (x) { return x.estado === 'falha'; }).map(function (x) { return x.nome; }).join('; '), pr.filter(function (x) { return x.estado === 'alerta'; }).map(function (x) { return x.nome; }).join('; ')]);
   });
   plano.folhas.push({ nome: pre + 'Estado', linhas: est });
 
@@ -3194,14 +3213,18 @@ function relPlanoExcel_(aprendido, res, comp, opcoes) {
         ex.push([rot[p.periodo] || p.periodo, TIPO[g.tipo] || g.tipo, g.valor, g.explicacao, prop, DEC[g.decisao || g.accao.omissao] || '']);
       });
     });
+    // Resolvido sozinho (2026-11-18): cada correccao com prova, ja aplicada, com a origem
+    (opcoes.automaticos || []).forEach(function (a) {
+      ex.push([(a.periodos || []).join(', '), 'Resolvido automaticamente: ' + (TIPO[a.tipo] || (a.tipo === 'por_classificar' ? 'Conta por classificar' : a.tipo)), a.valor, a.titulo + '. ' + a.explicacao, 'Origem: ' + a.origem, a.confirmado ? 'Aplicado e confirmado' : 'Aplicado (por confirmar)']);
+    });
     if (ex.length === 1) ex.push(['', 'Sem diferencas', '', 'O relatorio antigo coincide com os livros.']);
     plano.folhas.push({ nome: pre + 'Explicacao', linhas: ex });
   }
 
   var aplicados = {}; (res.ajustes || []).forEach(function (a) { aplicados[a.linha + '|' + a.periodo] = a; });
   var aj = [['Linha', 'Periodo', 'Valor', 'Celulas de origem', 'Motivo', 'Aplicado']];
-  (aprendido.ajustesPropostos || []).forEach(function (a) { var ap = aplicados[a.linha + '|' + a.periodo]; aj.push([a.rotulo, rot[a.periodo] || a.periodo, a.valor, (a.celulas || []).join(', '), ap && ap.motivo ? ap.motivo : a.motivo, ap ? 'SIM' : 'NAO (proposto)']); });
-  (res.ajustes || []).forEach(function (a) { if (!ajKey[a.linha + '|' + a.periodo]) aj.push([a.rotulo, rot[a.periodo] || a.periodo, a.valor, '', a.motivo, 'SIM']); });
+  (aprendido.ajustesPropostos || []).forEach(function (a) { var ap = aplicados[a.linha + '|' + a.periodo]; aj.push([a.rotulo, rot[a.periodo] || a.periodo, a.valor, (a.celulas || []).join(', '), ap && ap.motivo ? ap.motivo : a.motivo, ap ? (ap.auto ? 'SIM (automatico)' : 'SIM') : 'NAO (proposto)']); });
+  (res.ajustes || []).forEach(function (a) { if (!ajKey[a.linha + '|' + a.periodo]) aj.push([a.rotulo, rot[a.periodo] || a.periodo, a.valor, '', a.motivo, a.auto ? 'SIM (automatico)' : 'SIM']); });
   if (aj.length === 1) aj.push(['Sem ajustes: nenhum valor fora dos livros.']);
   plano.folhas.push({ nome: pre + 'Ajustes', linhas: aj });
 
@@ -3493,6 +3516,121 @@ function relProcessarLivro_(livro, opcoes) {
   var expl = relExplicarDiferencas_(dec.ficha, periodos, res, a.esperado, { ajustesPropostos: a.ajustesPropostos, trocasAMao: a.duvidas.filter(function (x) { return x.tipo === 'troca_a_mao'; }) });
   var sug = relSugerirClassificacao_(dec.ficha, res.porClassificar);
   return { ok: true, aprendido: aprendido, periodos: periodos, resultado: res, comparacao: comp, explicacao: expl, sugestoes: sug, avisos: dec.avisos };
+}
+
+// ── 4. RESOLVER O QUE TEM PROVA (2026-11-18; Melven: "resolver, nao somente alertar") ──
+// Cada causa provada nos ficheiros vira uma decisao aplicada sozinha, com a explicacao e a origem:
+//  - conta noutra linha (mudar a conta fecha as duas diferencas ao centavo) -> mover a conta, todos os meses;
+//  - valor escrito a mao / lancamento fora dos livros (celulas do relatorio antigo) -> ajuste igual ao relatorio antigo;
+//  - conta por classificar com regra vizinha de confianca ALTA -> classificar nessa linha.
+// Nunca: "por explicar" (sem prova), trocas entre linhas (nada a fazer), sugestoes de confianca media/baixa.
+// As decisoes levam auto: true; so passam a memoria da empresa quando o contabilista confirma.
+// opcoes: { ano, rejeitados: { chave: true } } (o que o contabilista desfez nao volta a entrar).
+function relDecisoesProvaveis_(R, base, opcoes) {
+  opcoes = opcoes || {}; base = base || {};
+  var rej = opcoes.rejeitados || {};
+  var d = { regras: (base.regras || []).slice(), ajustes: (base.ajustes || []).slice() };
+  if (base.centros) d.centros = base.centros;
+  if (base.nomesCentros) d.nomesCentros = base.nomesCentros;
+  var aplicados = [], porChave = {}, porId = {};
+  ((R && R.aprendido && R.aprendido.ficha && R.aprendido.ficha.linhas) || []).forEach(function (l) { porId[l.id] = l; });
+  var rot = function (id) { return (porId[id] && porId[id].rotulo) || id; };
+  var kR = function (r) { return J_([r.linha, (r.contas || []).map(relSoDigitos_), r.centro || '']); };
+  var vR = {}, vA = {};
+  d.regras.forEach(function (r) { vR[kR(r)] = true; });
+  d.ajustes.forEach(function (a) { vA[a.linha + '|' + a.periodo] = true; });
+  function registar(chave, item, rotPeriodo, valor) {
+    var a = porChave[chave];
+    if (!a) { a = porChave[chave] = Object.assign({ chave: chave, periodos: [], valor: 0 }, item); aplicados.push(a); }
+    if (rotPeriodo && a.periodos.indexOf(rotPeriodo) === -1) a.periodos.push(rotPeriodo);
+    a.valor = relMoeda_(relCent_(a.valor) + relCent_(Math.abs(Number(valor) || 0)));
+  }
+  var TIPO = { conta_noutra_linha: 'Conta noutra linha', valor_a_mao: 'Valor escrito a mao', lancamento_fora_dos_livros: 'Lancamento fora dos livros' };
+  ((R && R.explicacao && R.explicacao.periodos) || []).forEach(function (p) {
+    (p.grupos || []).forEach(function (g) {
+      if (!g.accao || g.accao.tipo !== 'escolher' || g.tipo === 'por_explicar') return;
+      var ops = g.accao.opcoes || [];
+      if (ops.indexOf('mover_conta') !== -1 && g.accao.regra) {
+        var r = { linha: g.accao.regra.linha, contas: g.accao.regra.contas, centro: g.accao.regra.centro || '' }, ch = 'R:' + kR(r);
+        if (rej[ch]) return;
+        var nome = (g.conta || r.contas.join(',')) + (g.codigo ? ' (centro ' + g.codigo + ')' : (r.centro ? ' [' + r.centro + ']' : ''));
+        if (!vR[kR(r)]) { vR[kR(r)] = true; d.regras.push(Object.assign({}, r, { auto: true, motivo: 'Automatico: conta ' + nome + ' na linha do relatorio antigo' })); }
+        registar(ch, { tipo: g.tipo, accao: 'mover_conta', titulo: 'Conta ' + nome + ' movida para "' + rot(r.linha) + '"',
+          explicacao: 'O relatorio antigo tinha a conta ' + nome + ' em "' + rot(r.linha) + '"; mover a conta fecha a diferenca ao centavo nos dois lados. Vale para todos os meses.',
+          origem: 'Relatorio antigo + balancete (conta ' + nome + ')' }, p.rotulo, g.valor);
+        return;
+      }
+      var ajs = g.accao.ajustes || (g.accao.ajuste ? [g.accao.ajuste] : []);
+      if (!ajs.length || ops.indexOf('ajuste') === -1) return;
+      var chA = 'A:' + p.periodo + '|' + g.tipo + '|' + (g.linhas || []).join(',');
+      if (rej[chA]) return;
+      var cel = (g.celulas || []).join(', ');
+      ajs.forEach(function (a) {
+        if (vA[a.linha + '|' + a.periodo]) return;
+        vA[a.linha + '|' + a.periodo] = true;
+        d.ajustes.push({ linha: a.linha, periodo: a.periodo, valor: a.valor, ano: opcoes.ano || '', auto: true,
+          motivo: 'Automatico: ' + (TIPO[g.tipo] || g.tipo).toLowerCase() + (cel ? ' (' + cel + ')' : '') + ', igual ao relatorio antigo' });
+      });
+      registar(chA, { tipo: g.tipo, accao: 'ajuste', titulo: (TIPO[g.tipo] || g.tipo) + ' em ' + (g.linhas || []).map(rot).join(', '),
+        explicacao: g.explicacao + ' Ajuste igual ao relatorio antigo, registado em Fixer_Ajustes.', origem: relOrigemGrupo_(g, cel) }, p.rotulo, g.valor);
+    });
+  });
+  ((R && R.sugestoes) || []).forEach(function (s) {
+    if (s.confianca !== 'alta' || !s.linha) return;
+    var r = { linha: s.linha, contas: (s.regra && s.regra.contas) || [s.conta], centro: (s.regra && s.regra.centro) || '' }, ch = 'C:' + kR(r);
+    if (rej[ch]) return;
+    if (!vR[kR(r)]) { vR[kR(r)] = true; d.regras.push(Object.assign({}, r, { auto: true, motivo: 'Automatico: ' + (s.motivo || '') })); }
+    var reg = (s.motivo || '').match(/regra ([^ ]+)/);
+    registar(ch, { tipo: 'por_classificar', accao: 'classificar', titulo: 'Conta ' + s.conta + (s.centro && s.centro !== 'sem centro' ? ' [' + s.centro + ']' : '') + ' posta em "' + rot(s.linha) + '"',
+      explicacao: 'Estava por classificar. ' + (s.motivo || ''), origem: 'Regra da empresa: ' + (reg ? reg[1] : 'regra vizinha') }, (s.periodos || []).join(', '), s.valor);
+  });
+  return { decisoes: d, aplicados: aplicados };
+}
+
+// A prova de cada grupo, dita por extenso (celula do relatorio antigo, conta do balancete ou os dois lados do lancamento).
+function relOrigemGrupo_(g, cel) {
+  if (cel) return 'Relatorio antigo: ' + cel;
+  if (g.tipo === 'conta_noutra_linha') return 'Relatorio antigo + balancete (conta ' + (g.conta || '') + (g.codigo ? ', centro ' + g.codigo : '') + ')';
+  if (g.tipo === 'lancamento_fora_dos_livros') return 'Relatorio antigo: a diferenca no resultado (' + g.valor + ') tem contrapartida igual no balanco, ao centavo (lancamento com os dois lados)';
+  return 'Relatorio antigo';
+}
+
+// Aplica e volta a processar ate nada novo (mover uma conta pode revelar outra causa). processar(decisoes) -> R.
+function relResolverProvaveis_(processar, base, opcoes) {
+  var R = processar(base), dec = base, aplicados = [], porChave = {};
+  for (var volta = 0; volta < 3 && R && R.ok && R.modo !== 'pgc'; volta++) {
+    var p = relDecisoesProvaveis_(R, dec, opcoes);
+    var novos = p.aplicados.filter(function (a) { return !porChave[a.chave]; });
+    if (!novos.length) break;
+    var R2 = processar(p.decisoes);
+    if (!R2 || !R2.ok) break;
+    novos.forEach(function (a) { porChave[a.chave] = a; aplicados.push(a); });
+    R = R2; dec = p.decisoes;
+  }
+  if (R) R.automaticos = aplicados;
+  return { R: R, decisoes: dec, aplicados: aplicados };
+}
+
+// Decisoes para guardar na memoria: so as nao automaticas, ou (confirmar) todas sem a marca "auto".
+function relSemAutomaticos_(dec, confirmar) {
+  dec = dec || {};
+  var limpa = function (x) { var o = Object.assign({}, x); delete o.auto; return o; };
+  var f = function (l) { return (l || []).filter(function (x) { return confirmar || !x.auto; }).map(limpa); };
+  var o = { regras: f(dec.regras), ajustes: f(dec.ajustes) };
+  if (dec.centros) o.centros = dec.centros;
+  if (dec.nomesCentros) o.nomesCentros = dec.nomesCentros;
+  return o;
+}
+
+// Estado para mostrar: "com alertas" so por causa de ajustes (fora dos livros, com origem) = validado com ajustes.
+function relEstadoApresentado_(res, pid) {
+  if (!res) return 'nao_validado';
+  var per = pid ? (res.periodos || []).filter(function (p) { return p.id === pid; }) : (res.periodos || []);
+  var est = pid ? (per[0] || {}).estado : res.estado;
+  if (est !== 'com_alertas') return est;
+  var alertas = [];
+  per.forEach(function (p) { ((res.provas || {})[p.id] || []).forEach(function (x) { if (x.estado === 'alerta') alertas.push(x.id); }); });
+  return alertas.length && alertas.every(function (id) { return id === 'ajustes'; }) ? 'validado_com_ajustes' : est;
 }
 
 // ================================================================
@@ -3925,7 +4063,7 @@ function relPlanoEntrada_(R, opcoes) {
     return { ok: true, celulas: [], folhas: [{ nome: 'Fixer_Estado', linhas: est }].concat(q), avisos: [], estado: R.resultado.estado, livroNovo: true };
   }
   var extra = R.modo === 'memoria' ? relQuadrosRelatorio_(R) : (R.folhasBrutas || []);
-  var plano = relPlanoExcel_(R.aprendido, R.resultado, R.comparacao, { titulo: opcoes.titulo, data: opcoes.data, explicacao: R.explicacao, folhasExtra: extra });
+  var plano = relPlanoExcel_(R.aprendido, R.resultado, R.comparacao, { titulo: opcoes.titulo, data: opcoes.data, explicacao: R.explicacao, automaticos: R.automaticos || [], folhasExtra: extra });
   plano.livroNovo = R.modo === 'memoria';
   var est = plano.folhas.filter(function (f) { return f.nome === 'Fixer_Estado'; })[0];
   if (est) { est.linhas.splice(3, 0, ['Origem', MODO[R.modo] || R.modo]); R.avisos.forEach(function (a) { est.linhas.push(['Aviso', a]); }); }
@@ -4232,10 +4370,12 @@ let R = null, chaveModelo = '', memoria = null, memIgnorada = false;
 let decAplicadas = { regras: [], ajustes: [] };
 let escolhas = {}, sugEscolhas = {}, nomesEsc = {};
 let empresasLista = [], memTodos = null, escolhaModelo = null, nuitConfirmado = '';
+// Resolver o que tem prova (2026-11-18): decEmUso = confirmadas + automaticas; decAplicadas = so as confirmadas (vao para a memoria)
+let decEmUso = null, autoAplicados = [], autoRejeitados = {}, autoConfirmado = false;
 
 const TIPO_NOME = { conta_noutra_linha: 'Conta noutra linha', valor_a_mao: 'Valor escrito à mão', lancamento_fora_dos_livros: 'Lançamento fora dos livros', troca_entre_linhas: 'Só troca entre linhas', por_explicar: 'Por explicar' };
 const OPCAO_NOME = { seguir_livros: 'Seguir os livros', ajuste: 'Igual ao relatório antigo (ajuste)', manter_sistema: 'Manter a linha do sistema', mover_conta: 'Mover a conta (todos os meses)' };
-const ESTADO_NOME = { validado: 'VALIDADO', com_alertas: 'COM ALERTAS', nao_validado: 'NÃO VALIDADO' };
+const ESTADO_NOME = { validado: 'VALIDADO', validado_com_ajustes: 'VALIDADO COM AJUSTES', com_alertas: 'COM ALERTAS', nao_validado: 'NÃO VALIDADO' };
 const MESES_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 ligarDrop($('dz'), (f) => onFiles(f), () => $('fi').click());
@@ -4408,6 +4548,13 @@ function processar(dec) {
     { decisoes: dec, modelo: memoria && !memIgnorada ? memoria.modelo : null, fechos: memoria && !memIgnorada ? memoria.fechos : null, mapaCsv: MAPA() });
 }
 
+// Processa com as decisoes dadas e aplica sozinho o que tem prova (Sugerir.js: relResolverProvaveis_).
+function resolver(base) {
+  const r = relResolverProvaveis_(processar, base, { ano: anoEscolhido(), rejeitados: autoRejeitados });
+  if (r.R && r.R.ok) { decEmUso = r.decisoes; autoAplicados = r.aplicados; autoAplicados.forEach((a) => { a.confirmado = autoConfirmado; }); }
+  return r.R;
+}
+
 // ── PROCESSAR ──
 async function iniciar() {
   $('p3-erro').style.display = 'none';
@@ -4418,7 +4565,7 @@ async function iniciar() {
   setBtnState(true);
   try {
     setStep('s1', 'active'); prog(10, 'A reconhecer os ficheiros...'); await pausa();
-    memoria = null; decAplicadas = { regras: [], ajustes: [] };
+    memoria = null; decAplicadas = { regras: [], ajustes: [] }; decEmUso = null; autoAplicados = []; autoRejeitados = {}; autoConfirmado = false;
     const R0 = processar(null);
     (R0.classificacao.brutos || []).forEach((b) => log(b.ficheiro + ': ' + (b.abertura ? 'abertura' : b.tipo + ' de ' + MESES_PT[b.mes - 1] + ' ' + (b.ano || '')) + ' (mês pelo ' + b.fonteMes + ')', 'ok'));
     if (R0.classificacao.livro) log(R0.classificacao.livro.nome + ': livro do relatório', 'ok');
@@ -4440,12 +4587,13 @@ async function iniciar() {
     setStep('s2', 'done');
 
     setStep('s3', 'active'); prog(55, 'A calcular a partir dos balancetes...'); await pausa();
-    R = processar(decAplicadas);
+    R = resolver(decAplicadas);
     if (!R.ok) throw new Error((R.avisos || []).join(' ') || 'Não foi possível fazer o relatório com estes ficheiros.');
     log('Modelo: ' + textoModo(R).titulo, 'ok');
+    if (autoAplicados.length) log(autoAplicados.length + ' correcção(ões) com prova aplicada(s) e explicada(s) ✓', 'ok');
     setStep('s3', 'done');
     setStep('s4', 'active'); prog(75, 'A provar...'); await pausa();
-    R.resultado.periodos.forEach((p) => log(p.rotulo + ': ' + (ESTADO_NOME[p.estado] || p.estado), p.estado === 'nao_validado' ? 'err' : (p.estado === 'com_alertas' ? 'warn' : 'ok')));
+    R.resultado.periodos.forEach((p) => { const e = relEstadoApresentado_(R.resultado, p.id); log(p.rotulo + ': ' + (ESTADO_NOME[e] || e), e === 'nao_validado' ? 'err' : (e === 'com_alertas' ? 'warn' : 'ok')); });
     setStep('s4', 'done');
     setStep('s5', 'active'); prog(90, 'A explicar...'); await pausa();
     if (R.explicacao) log(R.explicacao.resumo.explicado + ' diferença(s) explicada(s), ' + R.explicacao.resumo.porExplicar + ' por explicar ✓', 'ok');
@@ -4485,9 +4633,9 @@ function grupos() {
   return out;
 }
 function mostrarResultado() {
-  const res = R.resultado, est = res.estado, pgc = R.modo === 'pgc';
-  $('semaforo-card').className = 'semaforo-card sem-' + ({ validado: 'verde', com_alertas: 'amarelo', nao_validado: 'vermelho' }[est] || 'amarelo');
-  $('sem-title').textContent = est === 'validado' ? 'Relatório validado' : (est === 'nao_validado' ? 'Relatório NÃO validado' : 'Relatório validado com alertas');
+  const res = R.resultado, est = relEstadoApresentado_(res), pgc = R.modo === 'pgc';
+  $('semaforo-card').className = 'semaforo-card sem-' + ({ validado: 'verde', validado_com_ajustes: 'verde', com_alertas: 'amarelo', nao_validado: 'vermelho' }[est] || 'amarelo');
+  $('sem-title').textContent = { validado: 'Relatório validado', validado_com_ajustes: 'Relatório validado com ajustes', nao_validado: 'Relatório NÃO validado' }[est] || 'Relatório validado com alertas';
   $('sem-sub').textContent = res.periodos.length + ' ' + (pgc ? 'período' : 'mês(es)') + ' calculado(s) a partir dos balancetes · ' + ($('empresa').value || $('nuit').value);
   const tm = textoModo(R); $('modo-titulo').textContent = tm.titulo; $('modo-texto').textContent = tm.texto;
   const alts = escolhaModelo ? escolhaModelo.alternativas.filter((a) => a.temModelo) : [];
@@ -4506,14 +4654,16 @@ function mostrarResultado() {
   let h = '<thead><tr><th>Mês</th><th class="num">Resultado (livros)</th><th class="num">Relatório antigo</th><th class="num">Diferença</th><th>Estado</th></tr></thead><tbody>';
   res.periodos.forEach((p) => {
     const v = lv ? lv.valores[p.id] : p.resultado, e = esp && typeof esp[p.id] === 'number' ? esp[p.id] : null, d = e === null ? null : Math.round((e - v) * 100) / 100;
+    const ep = relEstadoApresentado_(res, p.id);
     h += '<tr><td>' + esc(p.rotulo) + '</td><td class="num">' + fmtN(v) + '</td><td class="num">' + (e === null ? '—' : fmtN(e)) + '</td><td class="num' + (d ? ' dif' : '') + '">' + (d === null ? '—' : fmtN(d)) +
-      '</td><td><span class="badge' + (p.estado === 'validado' ? '' : (p.estado === 'nao_validado' ? ' er' : ' av')) + '">' + esc(ESTADO_NOME[p.estado] || p.estado) + '</span></td></tr>';
+      '</td><td><span class="badge' + (ep === 'validado' || ep === 'validado_com_ajustes' ? '' : (ep === 'nao_validado' ? ' er' : ' av')) + '">' + esc(ESTADO_NOME[ep] || ep) + '</span></td></tr>';
   });
   $('tab-meses').innerHTML = h + '</tbody>';
+  mostrarAuto();
 
   const gs = grupos(), porDecidir = gs.filter((g) => g.accao.tipo === 'escolher');
   $('dif-wrap').style.display = R.modo === 'memoria' ? 'none' : 'block';
-  $('dif-lista').innerHTML = gs.length ? gs.map(htmlGrupo).join('') : '<div class="vazio">O relatório antigo coincide com os livros em todas as linhas comparadas.</div>';
+  $('dif-lista').innerHTML = gs.length ? gs.map(htmlGrupo).join('') : '<div class="vazio">' + (autoAplicados.length ? 'Nada por decidir: o que tinha prova foi resolvido em cima.' : 'O relatório antigo coincide com os livros em todas as linhas comparadas.') + '</div>';
   $('k-meses').textContent = res.periodos.length;
   $('k-meses-s').textContent = res.periodos.filter((p) => p.estado !== 'nao_validado').length + ' com provas certas';
   $('k-expl').textContent = R.explicacao.resumo.explicado + ' de ' + R.explicacao.resumo.grupos;
@@ -4555,12 +4705,44 @@ function mostrarPGC() {
   if (dr) h += linha('Resultado líquido do período', dr.resultadoLiquido, true);
   h += linha('Total do activo', t.activo, true) + linha('Capital próprio', t.capitalProprio) + linha('Passivo', t.passivo) + linha('Total do capital próprio e passivo', t.capitalProprioPassivo, true);
   $('tab-meses').innerHTML = h + '</tbody>';
-  ['dif-wrap', 'sug-wrap', 'cc-wrap'].forEach((id) => { $(id).style.display = 'none'; });
+  ['dif-wrap', 'sug-wrap', 'cc-wrap', 'auto-wrap'].forEach((id) => { $(id).style.display = 'none'; });
   $('k-meses').textContent = R.periodos.length; $('k-meses-s').textContent = 'balancete(s) somado(s)';
   $('k-expl').textContent = '—'; $('k-decidir').textContent = o.aValidar.length; $('k-porexp').textContent = o.semRubrica.length;
   const notas = o.semRubrica.map((c) => ['sem rubrica', c.conta + ' ' + (c.descricao || '') + ' (' + fmtN(c.saldo) + ')']).concat(o.aValidar.slice(0, 200).map((c) => ['a confirmar', c.conta + ' ' + (c.descricao || '') + ' → ' + c.rubrica]));
   $('duv-titulo').textContent = 'Contas a ver pelo contabilista (' + notas.length + ')';
   $('duv-lista').innerHTML = notas.length ? notas.map((n) => '<div class="duv"><span class="badge av">' + esc(n[0]) + '</span> ' + esc(n[1]) + '</div>').join('') : '<div class="vazio">Todas as contas têm rubrica confirmada.</div>';
+}
+// Cartao "Resolvido automaticamente": cada correccao com prova, a explicacao, a origem e Desfazer.
+function mostrarAuto() {
+  const lista = autoAplicados || [], desfeitos = Object.keys(autoRejeitados);
+  $('auto-wrap').style.display = lista.length || desfeitos.length ? 'block' : 'none';
+  $('auto-titulo').textContent = 'Resolvido automaticamente (' + lista.length + ')';
+  $('btn-auto-ok').style.display = lista.length && !autoConfirmado ? '' : 'none';
+  $('auto-sub').textContent = autoConfirmado
+    ? 'Confirmado: estas correcções passam a regra da empresa e ficam guardadas ao gerar o Excel.'
+    : 'Correcções com prova nos ficheiros (célula do relatório antigo, conta do balancete ou regra da empresa), já aplicadas e explicadas. Pode desfazer cada uma; só passam a regra da empresa para os meses seguintes quando confirmar.';
+  $('auto-lista').innerHTML = lista.map((a, i) => '<div class="auto-item"><div class="auto-ic">✓</div><div class="auto-body">' +
+    '<div class="auto-tit">' + esc(a.titulo) + '</div>' +
+    '<div class="auto-meta">' + esc((a.periodos || []).join(', ')) + ' · <span class="auto-v">' + fmtN(a.valor) + '</span>' + (a.confirmado ? ' · confirmado' : '') + '</div>' +
+    '<div class="auto-txt">' + esc(a.explicacao) + '</div><div class="auto-orig">' + esc(a.origem) + '</div></div>' +
+    (a.confirmado ? '' : '<button class="btn btn-s btn-mini" onclick="desfazerAuto(' + i + ')">Desfazer</button>') + '</div>').join('') +
+    (desfeitos.length ? '<div class="nota" style="margin-top:8px">' + desfeitos.length + ' correcção(ões) desfeita(s): o número segue os livros. <button class="ver" onclick="refazerAuto()">Voltar a aplicar</button></div>' : '');
+}
+function recalcularComAuto() {
+  const n = resolver(decAplicadas);
+  if (!n || !n.ok) { toast(((n && n.avisos) || []).join(' ') || 'Falha ao recalcular', 'err'); return; }
+  R = n; escolhas = {}; sugEscolhas = {}; nomesEsc = {}; mostrarResultado();
+}
+function desfazerAuto(i) {
+  const a = autoAplicados[i]; if (!a) return;
+  autoRejeitados[a.chave] = true; recalcularComAuto(); toast('Desfeito: o número volta a seguir os livros', 'ok');
+}
+function refazerAuto() { autoRejeitados = {}; recalcularComAuto(); toast('Correcções aplicadas de novo', 'ok'); }
+function confirmarAuto() {
+  if (!decEmUso) return;
+  decAplicadas = relSemAutomaticos_(decEmUso, true); decEmUso = decAplicadas; autoConfirmado = true;
+  autoAplicados.forEach((a) => { a.confirmado = true; });
+  mostrarAuto(); toast('Confirmado: fica guardado para os meses seguintes ao gerar o Excel', 'ok');
 }
 function htmlGrupo(g) {
   const tipo = '<span class="tipo tipo-' + esc(g.tipo) + '">' + esc(TIPO_NOME[g.tipo] || g.tipo) + '</span>';
@@ -4589,7 +4771,8 @@ function nomearGrupo(el) { const v = el.value.trim().replace(/\s+/g, '_').replac
 
 // Decisões = as já aplicadas + as escolhas novas + as sugestões aceites + os nomes dos grupos.
 function decisoesActuais() {
-  const d = { regras: decAplicadas.regras.slice(), ajustes: decAplicadas.ajustes.slice(), centros: decAplicadas.centros, nomesCentros: Object.assign({}, decAplicadas.nomesCentros || {}) };
+  const b = decEmUso || decAplicadas;
+  const d = { regras: b.regras.slice(), ajustes: b.ajustes.slice(), centros: b.centros, nomesCentros: Object.assign({}, b.nomesCentros || {}) };
   const vis = new Set(d.regras.map((r) => JSON.stringify([r.linha, r.contas, r.centro || ''])));
   const juntarRegra = (r) => { const k = JSON.stringify([r.linha, r.contas, r.centro || '']); if (!vis.has(k)) { vis.add(k); d.regras.push({ linha: r.linha, contas: r.contas, centro: r.centro || '' }); } };
   const quando = fmtData(new Date()), ano = anoEscolhido();
@@ -4609,7 +4792,7 @@ function decisoesActuais() {
   if (!Object.keys(d.nomesCentros).length) delete d.nomesCentros;
   return d;
 }
-function decisoesMudaram(d) { return JSON.stringify(d) !== JSON.stringify(decAplicadas); }
+function decisoesMudaram(d) { return JSON.stringify(d) !== JSON.stringify(decEmUso || decAplicadas); }
 async function aplicarEscolhas() {
   if (!R || R.modo === 'pgc') { toast('Nada a aplicar no modelo oficial', 'warn'); return; }
   const d = decisoesActuais();
@@ -4617,9 +4800,9 @@ async function aplicarEscolhas() {
   $('btn-rever').disabled = true;
   await pausa();
   try {
-    const n = processar(d);
+    const n = resolver(d);
     if (!n.ok) throw new Error((n.avisos || []).join(' ') || 'Falha ao aplicar');
-    R = n; decAplicadas = d; escolhas = {}; sugEscolhas = {}; nomesEsc = {};
+    R = n; decAplicadas = relSemAutomaticos_(decEmUso, autoConfirmado); escolhas = {}; sugEscolhas = {}; nomesEsc = {};
     mostrarResultado();
     toast('Escolhas aplicadas', 'ok');
   } catch (e) { toast(e.message, 'err'); } finally { $('btn-rever').disabled = false; }
@@ -4627,15 +4810,15 @@ async function aplicarEscolhas() {
 function trocarModelo(chave) {
   if (!memTodos || !memTodos.modelos[chave]) return;
   chaveModelo = chave; memoria = memTodos.modelos[chave]; memIgnorada = false;
-  decAplicadas = decisoesDaMemoria(memoria.decisoes); escolhas = {}; sugEscolhas = {}; nomesEsc = {};
+  decAplicadas = decisoesDaMemoria(memoria.decisoes); escolhas = {}; sugEscolhas = {}; nomesEsc = {}; autoRejeitados = {}; autoConfirmado = false;
   escolhaModelo = Object.assign({}, escolhaModelo, { chave, motivo: 'Modelo escolhido por si.' });
-  const n = processar(decAplicadas);
+  const n = resolver(decAplicadas);
   if (!n.ok) { toast((n.avisos || []).join(' '), 'err'); return; }
   R = n; mostrarResultado(); toast('Modelo trocado', 'ok');
 }
 async function ignorarMemoria() {
-  memIgnorada = true; decAplicadas = { regras: [], ajustes: [] }; escolhas = {}; sugEscolhas = {}; nomesEsc = {};
-  R = processar(null);
+  memIgnorada = true; decAplicadas = { regras: [], ajustes: [] }; escolhas = {}; sugEscolhas = {}; nomesEsc = {}; autoRejeitados = {}; autoConfirmado = false;
+  R = resolver(decAplicadas);
   if (!R.ok) { toast((R.avisos || []).join(' '), 'err'); return; }
   mostrarResultado();
   toast('Recalculado sem as decisões guardadas', 'ok');
@@ -4656,9 +4839,9 @@ async function gerarExcel() {
     if (R.modo !== 'pgc') {
       const d = decisoesActuais();
       if (decisoesMudaram(d)) {
-        const n = processar(d);
+        const n = resolver(d);
         if (!n.ok) throw new Error((n.avisos || []).join(' ') || 'Falha ao aplicar as escolhas');
-        R = n; decAplicadas = d; escolhas = {}; sugEscolhas = {}; nomesEsc = {};
+        R = n; decAplicadas = relSemAutomaticos_(decEmUso, autoConfirmado); escolhas = {}; sugEscolhas = {}; nomesEsc = {};
       }
     }
     const empresa = $('empresa').value.trim() || $('nuit').value, periodo = periodoFinal();
