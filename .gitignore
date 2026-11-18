@@ -1,0 +1,20 @@
+# Seguranca Fixer: backend Apps Script e segredos nunca vao para o GitHub (repos publicos)
+*.gs
+*.gs.txt
+gas/
+*.zip
+*.txt
+.env
+.env.*
+*credential*
+*.key
+*.pem
+.clasp.json
+.clasprc.json
+# livros de clientes nunca no repo
+*.xlsx
+*.xlsm
+# ficheiros de trabalho (versoes antigas/recebidas do index)
+index (*).html
+# motores do navegador ja vao embutidos no index.html
+web/
