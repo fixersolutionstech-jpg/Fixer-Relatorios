@@ -2361,7 +2361,7 @@ function relTipoCentro_(codigo, centros) {
 
 // ── ITENS DE UM PERIODO: o balancete manda, o extracto reparte ──
 function relItensPeriodo_(doc, centros, ficha) {
-  var cfg = ficha.centros || {}, classes = cfg.classes || ['6'], itens = [], semCentro = 0, fora = [];
+  var cfg = ficha.centros || {}, classes = cfg.classes || ['6'], itens = [], semCentro = 0, fora = [], foraRend = [], difRend = [], liquido = 0;
   var soPeriodo = ficha.modo !== 'saldos' && (doc.colunas || []).indexOf('movDeb') !== -1 && (doc.colunas || []).indexOf('acumDeb') !== -1;
   function c(v) { return v === null || v === undefined ? 0 : Math.round(v * 100); }
   var porConta = {}, grupos = {};
@@ -2382,14 +2382,17 @@ function relItensPeriodo_(doc, centros, ficha) {
       var vl = l.debito - l.credito; soma += vl;
       if (vl) itens.push({ conta: conta, digitos: d, tipo: relTipoCentro_(l.codigo, cfg), centro: l.codigo, v: vl });
     });
-    if (g.total - soma) { semCentro += Math.abs(g.total - soma); itens.push({ conta: conta, digitos: d, tipo: cfg.semCentro || null, semCentro: true, v: g.total - soma }); }
+    var dif = g.total - soma;
+    // Gastos (classe 6): soma com sinal, o que sai de uma subconta e entra noutra compensa-se. Rendimentos (classe 7): aviso a parte.
+    if (dif) { if (d.charAt(0) === '7') difRend.push({ conta: conta, valor: relMoeda_(dif) }); else liquido += dif; itens.push({ conta: conta, digitos: d, tipo: cfg.semCentro || null, semCentro: true, v: g.total - soma }); }
   });
   Object.keys(porConta).forEach(function (k) {
     if (grupos[k] || classes.indexOf(k.charAt(0)) === -1) return;
     var t = porConta[k].reduce(function (s, l) { return s + l.debito - l.credito; }, 0);
-    if (t) fora.push({ conta: k, valor: relMoeda_(t) });
+    if (t) (k.charAt(0) === '7' ? foraRend : fora).push({ conta: k, valor: relMoeda_(t) });
   });
-  return { itens: itens, semCentro: semCentro, fora: fora };
+  semCentro = Math.abs(liquido);
+  return { itens: itens, semCentro: semCentro, fora: fora, difRend: difRend, foraRend: foraRend };
 }
 
 // ── APLICAR A FICHA A UMA SERIE DE PERIODOS ──
@@ -2473,6 +2476,15 @@ function relAplicarFicha_(ficha, periodos, opcoes) {
       if (it.semCentro) det.push(relMoeda_(it.semCentro) + ' de gastos sem centro de custo');
       if (it.fora.length) det.push('contas no extracto que nao estao no balancete: ' + relResumoLinhas_(it.fora.map(function (x) { return x.conta + ' (' + x.valor + ')'; })));
       provas.push(relProva_('centros', 'Extracto por centro cobre os gastos do balancete', det.length ? 'alerta' : 'ok', it.semCentro || null, det.join('; ')));
+      // Rendimentos (classe 7): o extracto por centro nao bate com o balancete. Aviso a parte, nao altera o estado.
+      if (it.difRend.length || it.foraRend.length) {
+        var dr = [];
+        if (it.difRend.length) dr.push('diferenca por conta: ' + relResumoLinhas_(it.difRend.map(function (x) { return x.conta + ' (' + x.valor + ')'; })));
+        if (it.foraRend.length) dr.push('contas so no extracto: ' + relResumoLinhas_(it.foraRend.map(function (x) { return x.conta + ' (' + x.valor + ')'; })));
+        var txt = 'Rendimentos: o extracto por centro nao bate com o balancete (' + dr.join('; ') + '). Os numeros seguem o balancete; confirme facturas anuladas ou notas de credito.';
+        provas.push(relProva_('centros_rendimentos', 'Extracto por centro e rendimentos do balancete', 'aviso', null, txt));
+        r.avisos.push((p.rotulo || pid) + ': ' + txt);
+      }
     } else provas.push(relProva_('centros', 'Extracto por centro cobre os gastos do balancete', 'nao_aplicavel', null, 'Sem extracto por centro neste periodo.'));
     r.provas[pid] = provas;
     r.periodos.push({ id: pid, rotulo: p.rotulo || pid, resultado: relMoeda_(resLivros), estado: provas.some(function (x) { return x.estado === 'falha'; }) ? 'nao_validado' : (provas.some(function (x) { return x.estado === 'alerta'; }) ? 'com_alertas' : 'validado') });
@@ -3972,7 +3984,7 @@ function relProcessarEntrada_(entrada, opcoes) {
       var ult = res.periodos[res.periodos.length - 1];
       return Object.assign(base, { ok: true, modo: novos.length ? 'livro_novos' : 'livro', ano: anoLivro,
         aprendido: Object.assign({}, a, { ficha: dec.ficha, apresentacao: apr }), periodos: periodos, resultado: res, comparacao: comp, explicacao: expl,
-        sugestoes: relSugerirClassificacao_(dec.ficha, res.porClassificar), folhasBrutas: folhasBrutas, avisos: avisos.concat(dec.avisos),
+        sugestoes: relSugerirClassificacao_(dec.ficha, res.porClassificar), folhasBrutas: folhasBrutas, avisos: avisos.concat(dec.avisos, res.avisos || []),
         guardar: { modelo: { ficha: a.ficha, ano: anoLivro, origem: livro.nome }, fecho: ult ? { chave: anoLivro + '-' + ('0' + (REL_MES_IDS_.indexOf(ult.id) + 1)).slice(-2), valores: relFechoDe_(res, ult.id) } : null } });
     }
   }
@@ -4632,6 +4644,11 @@ function grupos() {
   ((R.explicacao && R.explicacao.periodos) || []).forEach((p) => p.grupos.forEach((g, i) => out.push(Object.assign({ chave: p.periodo + '|' + i, periodo: p.periodo, rotuloPeriodo: p.rotulo }, g))));
   return out;
 }
+// Porque um mes nao esta "validado": os alertas e falhas (os ajustes ja aparecem no cartao "Resolvido automaticamente").
+function motivosAlerta(res, pid) {
+  const l = ((res.provas || {})[pid] || []).filter((x) => (x.estado === 'alerta' && x.id !== 'ajustes') || x.estado === 'falha');
+  return l.length ? '<div style="font-size:11px;opacity:.8;margin-top:3px;max-width:340px">' + l.map((x) => esc(x.nome) + (x.detalhe ? ': ' + esc(x.detalhe) : '')).join('<br/>') + '</div>' : '';
+}
 function mostrarResultado() {
   const res = R.resultado, est = relEstadoApresentado_(res), pgc = R.modo === 'pgc';
   $('semaforo-card').className = 'semaforo-card sem-' + ({ validado: 'verde', validado_com_ajustes: 'verde', com_alertas: 'amarelo', nao_validado: 'vermelho' }[est] || 'amarelo');
@@ -4651,12 +4668,12 @@ function mostrarResultado() {
 
   // tabela por mês
   const fin = linhaFinal(), lv = fin && res.linhas.find((l) => l.id === fin.id), esp = fin && R.aprendido.esperado && R.aprendido.esperado[fin.id];
-  let h = '<thead><tr><th>Mês</th><th class="num">Resultado (livros)</th><th class="num">Relatório antigo</th><th class="num">Diferença</th><th>Estado</th></tr></thead><tbody>';
+  let h = '<thead><tr><th>Mês</th><th class="num">Resultado (com ajustes)</th><th class="num">Relatório antigo</th><th class="num">Diferença</th><th>Estado</th></tr></thead><tbody>';
   res.periodos.forEach((p) => {
     const v = lv ? lv.valores[p.id] : p.resultado, e = esp && typeof esp[p.id] === 'number' ? esp[p.id] : null, d = e === null ? null : Math.round((e - v) * 100) / 100;
     const ep = relEstadoApresentado_(res, p.id);
     h += '<tr><td>' + esc(p.rotulo) + '</td><td class="num">' + fmtN(v) + '</td><td class="num">' + (e === null ? '—' : fmtN(e)) + '</td><td class="num' + (d ? ' dif' : '') + '">' + (d === null ? '—' : fmtN(d)) +
-      '</td><td><span class="badge' + (ep === 'validado' || ep === 'validado_com_ajustes' ? '' : (ep === 'nao_validado' ? ' er' : ' av')) + '">' + esc(ESTADO_NOME[ep] || ep) + '</span></td></tr>';
+      '</td><td><span class="badge' + (ep === 'validado' || ep === 'validado_com_ajustes' ? '' : (ep === 'nao_validado' ? ' er' : ' av')) + '">' + esc(ESTADO_NOME[ep] || ep) + '</span>' + motivosAlerta(res, p.id) + '</td></tr>';
   });
   $('tab-meses').innerHTML = h + '</tbody>';
   mostrarAuto();
